@@ -97,6 +97,12 @@ module MIPS_CPU (
 
     wire StopReq_from_ex;
 
+    //输出到div的信号
+
+    wire signed_flag;
+    wire [`DivBus]div_opdata1;
+    wire [`DivBus]div_opdata2;
+    wire start_flag;
     //********************************ex_mem信号*********************
 
     wire  en_wd_ex_mem;
@@ -147,6 +153,11 @@ module MIPS_CPU (
     //***************************ctrl信号*************************
 
     wire [`StopWidth] stop;
+
+    //***************************div信号*************************
+
+    wire [`DivResultBus] div_result;
+    wire complete_flag;
 
     //****************************例化操作**************************
     pc  u_pc (
@@ -256,6 +267,10 @@ ex  u_ex (
     .hi_i                    ( hi_i          ),
     .lo_i                    ( lo_i          ),
 
+    //输入来自div的信号
+    .div_result              (div_result     ),//除法结果
+    .complete_flag           (complete_flag  ),//是否完成    
+
     .mem_hi_i                ( hi_o_mem      ),
     .mem_lo_i                ( lo_o_mem      ),
     .mem_en_hilo             ( en_hilo_mem   ),
@@ -267,6 +282,11 @@ ex  u_ex (
     .desReg_addr_ex          ( desReg_addr_ex),
     .en_wd_ex                ( en_wd_ex    ),
     .result                  ( result_ex   ),
+    //输出到div的信号
+    .signed_flag             (signed_flag  ),
+    .div_opdata1             (div_opdata1  ),
+    .div_opdata2             (div_opdata2  ),
+    .start_flag              (start_flag   ),
 
     .en_hilo                 ( ex_en_hilo       ),
     .hi_o                    ( ex_hi_o          ),
@@ -370,5 +390,18 @@ ctrl  u_ctrl (
     .rst_n                   ( rst_n                 ),
 
     .stop                    ( stop                  )
+);
+
+div1  u_div1 (
+    .clk                     ( clk             ),
+    .rst_n                   ( rst_n           ),
+    .signed_flag             ( signed_flag     ),
+    .opdata1                 ( div_opdata1     ),
+    .opdata2                 ( div_opdata2     ),
+    .start_flag              ( start_flag      ),
+    .cancel_flag             ( 1'b0            ),//暂时还没有实现
+
+    .complete_flag           ( complete_flag   ),
+    .div_result              ( div_result      )
 );
 endmodule

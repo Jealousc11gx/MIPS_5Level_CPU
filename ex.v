@@ -27,6 +27,10 @@ module ex (
     input wire [`DoubleDataWidth-1:0] hilo_tmp_i,
     input wire [1:0] count_i,
 
+    //来自div模块的输入
+    input wire [`DivResultBus] div_result,//除法结果
+    input wire complete_flag,//是否完成
+
     //输出 是否要写回？ 写回的地址？ 运算的结果？
     //输出向de阶段的数据回推
     output reg en_wd_ex,
@@ -42,6 +46,11 @@ module ex (
     output reg [`DoubleDataWidth-1:0] hilo_tmp_o,
     output reg [1:0] count_o,
 
+    //向div模块输出
+    output reg signed_flag,
+    output reg [`DivBus] div_opdata1,
+    output reg [`DivBus] div_opdata2,
+    output reg start_flag,
     //暂停机制输出
     output reg StopReq_from_ex
 );
@@ -70,6 +79,8 @@ module ex (
 
     reg [`DataWidth-1:0] HI;//存储高位结果
     reg [`DataWidth-1:0] LO;//存储低位结果
+
+    reg StopReq_for_div;
 
     //减法或比较运算 决定减数是补码还是原码***********************************
     assign num2_i_mux =((op ==`EXE_SUB_OP) || //减法
@@ -245,13 +256,82 @@ module ex (
             endcase
         end
     end
+
+    //除法运算控制********************************
+
+    always @(*) begin
+        if(!rst_n) begin
+            StopReq_for_div = 0;
+            div_opdata1 = 0;
+            div_opdata2 = 0;
+            start_flag = 0;
+            signed_flag = 0;
+        end
+        else begin
+            StopReq_for_div = 0;
+            div_opdata1 = 0;
+            div_opdata2 = 0;
+            start_flag = 0;
+            signed_flag = 0;
+        end
+        case(op)
+            `EXE_DIV_OP:begin
+                if(complete_flag == 0)begin
+                    div_opdata1 = num1;
+                    div_opdata2 = num2;
+                    start_flag = 1;
+                    signed_flag = 1;
+                    StopReq_for_div = `Stop;
+                end
+                else if(complete_flag ==1)begin
+                    div_opdata1 = num1;
+                    div_opdata2 = num2;
+                    start_flag = 0;
+                    signed_flag = 1;
+                    StopReq_for_div = `NoStop;
+                end
+                else begin
+                    div_opdata1 = 0;
+                    div_opdata2 = 0;
+                    start_flag = 0;
+                    signed_flag = 0;
+                    StopReq_for_div = `NoStop;
+                end
+            end
+
+            `EXE_DIVU_OP:begin
+                if(complete_flag == 0)begin
+                    div_opdata1 = num1;
+                    div_opdata2 = num2;
+                    start_flag = 1;
+                    signed_flag = 0;
+                    StopReq_for_div = `Stop;
+                end
+                else if(complete_flag ==1)begin
+                    div_opdata1 = num1;
+                    div_opdata2 = num2;
+                    start_flag = 0;
+                    signed_flag = 0;
+                    StopReq_for_div = `NoStop;
+                end
+                else begin
+                    div_opdata1 = 0;
+                    div_opdata2 = 0;
+                    start_flag = 0;
+                    signed_flag = 0;
+                    StopReq_for_div = `NoStop;
+                end
+            end            
+        endcase
+    end
+
     //输出流水线暂停信号***************************
     always @(*) begin
         if(!rst_n)begin
             StopReq_from_ex = 0;
         end
         else begin
-            StopReq_from_ex = StopReq_for_madd_msub;
+            StopReq_from_ex = StopReq_for_madd_msub || StopReq_for_div;
         end
     end
 
@@ -288,7 +368,12 @@ module ex (
                     en_hilo = 1;
                     hi_o = mul_2period_temp[63:32];
                     lo_o = mul_2period_temp[31:0];
-                end                 
+                end
+                `EXE_DIV_OP,`EXE_DIVU_OP:begin
+                    en_hilo = 1;
+                    hi_o = div_result[63:32];
+                    lo_o = div_result[31:0];
+                end
                 default:begin
                     en_hilo = 0;
                     hi_o = 0;

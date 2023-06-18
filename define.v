@@ -245,3 +245,9 @@
 `define Stop 1
 `define NoStop 0
 `define StopWidth 5:0
+
+
+//**********************除法相关定义
+
+`define DivResultBus 63:0 //64位宽度
+`define DivBus 31:0 //宽度

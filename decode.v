@@ -297,6 +297,25 @@ always @(*) begin
                                     sel = `EXE_RES_NOP; //不对GPR进行操作
                                     end
 
+                                    `EXE_DIV:begin
+                                    en_rd1 = 1;//读端口1
+                                    en_rd2 = 1;//读端口2
+                                    en_wd = 0;//不需要写回GPR
+                                    Ins_Valid = 1;//指令有效
+                                    op = `EXE_DIV_OP; 
+                                    sel = `EXE_RES_NOP; //不对GPR进行操作
+                                    end
+
+
+                                    `EXE_DIVU:begin
+                                    en_rd1 = 1;//读端口1
+                                    en_rd2 = 1;//读端口2
+                                    en_wd = 0;//不需要写回GPR
+                                    Ins_Valid = 1;//指令有效
+                                    op = `EXE_DIVU_OP; 
+                                    sel = `EXE_RES_NOP; //不对GPR进行操作
+                                    end
+                                    
                                     default:begin //其余为无效指令
                                     end                                                                                                                                      
                             endcase
