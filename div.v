@@ -45,20 +45,20 @@ module div1 (
                     else begin
                         current_state <= DIVING;
                         div_cnt <= 6'b000000;
-                        if((signed_flag == 1'b1) && (opdata1[31] == 1'b1) ) begin
+                        if((signed_flag == 1'b1) && (opdata1[31] == 1'b1) ) begin//被除数为负数，使用补码计算
                             opdata1_temp = ~opdata1 + 1;
                         end
                         else begin
                             opdata1_temp = opdata1;
                         end
-                        if((signed_flag == 1'b1) && (opdata2[31] == 1'b1) ) begin
+                        if((signed_flag == 1'b1) && (opdata2[31] == 1'b1) ) begin//除数为负数，使用补码计算
                             opdata2_temp = ~opdata2 + 1;
                         end
                         else begin
                             opdata2_temp = opdata2;
                         end
                         dividend <= 0;
-                        dividend[32:1] <= opdata1_temp;
+                        dividend[32:1] <= opdata1_temp;//第0位留作商的位置,后面32位是被除数
                         divisor <= opdata2_temp;
                         end
                 end
@@ -77,20 +77,20 @@ module div1 (
             DIVING:	begin 
                 if(cancel_flag == 1'b0) begin
                     if(div_cnt != 6'b100000) begin
-                        if(minuend_n[32] == 1'b1) begin
-                            dividend <= {dividend[63:0] , 1'b0};
+                        if(minuend_n[32] == 1'b1) begin//此处为什么32位为一就表示是结果小于0
+                            dividend <= {dividend[63:0] , 1'b0};//留了一位商，其他的分别是余数和还没计算的被除数
                         end
                         else begin
-                            dividend <= {minuend_n[31:0] , dividend[31:0] , 1'b1};
+                            dividend <= {minuend_n[31:0] , dividend[31:0] , 1'b1};//因为一开始加了一个0 最高位本位和为1则为负
                         end
                         div_cnt <= div_cnt + 1;
                         end
                         else begin
-                            if((signed_flag == 1'b1) && ((opdata1[31] ^ opdata2[31]) == 1'b1)) begin
-                                dividend[31:0] <= (~dividend[31:0] + 1);
+                            if((signed_flag == 1'b1) && ((opdata1[31] ^ opdata2[31]) == 1'b1)) begin//有符号运算 且被除数和除数异号
+                                dividend[31:0] <= (~dividend[31:0] + 1);//没有给32位赋值
                             end
-                            if((signed_flag == 1'b1) && ((opdata1[31] ^ dividend[64]) == 1'b1)) begin              
-                                dividend[64:33] <= (~dividend[64:33] + 1);
+                            if((signed_flag == 1'b1) && ((opdata1[31] ^ dividend[64]) == 1'b1)) begin//被除数和商？这里是余数的符号
+                                dividend[64:33] <= (~dividend[64:33] + 1);//没有给32位赋值
                             end
                             current_state <= FINISH;
                             div_cnt <= 6'b000000;            	
@@ -102,7 +102,7 @@ module div1 (
             end
 
             FINISH:	begin
-                div_result <= {dividend[64:33], dividend[31:0]};  
+                div_result <= {dividend[64:33], dividend[31:0]};  //这里的32位是什么？
                 complete_flag <= 1;
                 if(start_flag == 0) begin
                     current_state <= IDLE;

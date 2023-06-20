@@ -25,6 +25,8 @@ module decode (
     input wire [4:0] mem_desReg_addr,
     input wire [`DataWidth-1:0] mem_result,
 
+    //当前指令是否位于延迟槽
+    input wire this_ins_in_delayslot_i,
 
     //向GPR中给出两个读使能和两个读地址 对应rs和rt
     output reg en_rd1,
@@ -40,6 +42,13 @@ module decode (
     output reg en_wd, //是否写回寄存器
     output reg [4:0] desReg_addr, //写回寄存器的地址
 
+    //输出当前指令是否位于延迟槽，存储的返回地址，下一条指令是否位于延迟槽，是否要转移，转移的目标地址
+    output reg this_ins_in_delayslot_o,
+    output reg [`DataWidth-1:0] link_address,
+    output reg next_ins_in_delayslot,
+    output reg branch_flag,
+    output reg [`DataWidth-1:0] branch_target_address,
+
     //向ctrl模块给出流水线暂停信号
 
     output reg StopReq_from_decode
@@ -47,11 +56,19 @@ module decode (
     wire [5:0]op1 = pc_ins [31:26]; //op位pc的高6位 指令码
     wire [4:0]op2 = pc_ins [10:6];//sa
     wire [5:0]op3 = pc_ins [5:0]; //功能码
-    wire [4:0]op4 = pc_ins [20:16];
+    wire [4:0]op4 = pc_ins [20:16];//rt
 
     reg [`Reg_BUS] Imm; //存放立即数 32位
 
     reg Ins_Valid; //指令有效性
+
+    wire [`DataWidth-1:0] pc_plus4;//指令地址按字节编址+4,也就是延迟槽指令
+    wire [`DataWidth-1:0] pc_plus8;//返回地址
+    wire [`DataWidth-1:0] offset_sll2_signextend;//offset 左移两位(因为字节编码和按字寻址的原因),符号拓展(指令对齐)
+
+    assign pc_plus4 = pc + 4;
+    assign pc_plus8 = pc + 8;
+    assign offset_sll2_signextend = {{14{pc_ins[15]}},pc_ins[15:0],2'b0};
 
 //进行初始化
 always @(*) begin
@@ -66,6 +83,10 @@ always @(*) begin
         desReg_addr = 0;
         Ins_Valid = 1;
         Imm = 0;
+        link_address = 0;
+        next_ins_in_delayslot = 0;
+        branch_flag = 0;
+        branch_target_address = 0;
     end
     else begin //其实就是改变了三个默认的寄存器的地址 其余都还是置0
         en_rd1 = 0;
@@ -78,6 +99,10 @@ always @(*) begin
         op = `EXE_NOP_OP;
         Imm = 0;
         sel = `EXE_RES_NOP;
+        link_address = 0;
+        next_ins_in_delayslot = 0;
+        branch_flag = 0;
+        branch_target_address = 0;        
         case (op1) //case指令码  在always块内完成
             `EXE_SPECIAL_INST:begin //指令码为R指令
                     case (op2) //case sa
@@ -316,6 +341,32 @@ always @(*) begin
                                     sel = `EXE_RES_NOP; //不对GPR进行操作
                                     end
                                     
+                                    `EXE_JR:begin//Jump Register
+                                    en_rd1 = 1;//rs
+                                    en_rd2 = 0;
+                                    en_wd = 0;//不需要写回GPR
+                                    Ins_Valid = 1;//指令有效
+                                    op = `EXE_JR_OP; 
+                                    sel = `EXE_RES_JUMP_BRANCH; //不对GPR进行操作
+                                    link_address = 0; //没有设置返回地址
+                                    next_ins_in_delayslot = 1;
+                                    branch_flag = 1;
+                                    branch_target_address = num1;                                    
+                                    end
+                                    
+                                    `EXE_JALR:begin//Jump And Link Register
+                                    en_rd1 = 1;//rs
+                                    en_rd2 = 0;
+                                    en_wd = 1;//需要写回rd，将link地址写到rd  默认写到rd中
+                                    Ins_Valid = 1;//指令有效
+                                    op = `EXE_JALR_OP; 
+                                    sel = `EXE_RES_JUMP_BRANCH; //不对GPR进行操作
+                                    link_address = pc_plus8; //jump and link register link address pc_plus8
+                                    next_ins_in_delayslot = 1;
+                                    branch_flag = 1;
+                                    branch_target_address = num1;//num1为rs                                    
+                                    end
+
                                     default:begin //其余为无效指令
                                     end                                                                                                                                      
                             endcase
@@ -442,6 +493,93 @@ always @(*) begin
             Imm = {{16{pc_ins[15]}},pc_ins[15:0]};//Sign Extend  
             end
 
+            `EXE_J:begin//J inst_index有26位
+            en_rd1 = 0;
+            en_rd2 = 0;
+            en_wd = 0;//不需要写回rd
+            Ins_Valid = 1;//指令有效
+            op = `EXE_J_OP; 
+            sel = `EXE_RES_JUMP_BRANCH; 
+            link_address = 0; //rd
+            next_ins_in_delayslot = 1;
+            branch_flag = 1;
+            branch_target_address = {pc_plus4[31:28],pc_ins[25:0],2'b00};                                    
+            end
+
+            `EXE_JAL:begin//Jump And Link
+            en_rd1 = 0;//rs
+            en_rd2 = 0;
+            en_wd = 1;//
+            Ins_Valid = 1;//指令有效
+            op = `EXE_JAL_OP; 
+            sel = `EXE_RES_JUMP_BRANCH;
+            desReg_addr = 5'b11111;//默认将返回地址存到$31
+            link_address = pc_plus8; //rd
+            next_ins_in_delayslot = 1;
+            branch_flag = 1;
+            branch_target_address = {pc_plus4[31:28],pc_ins[25:0],2'b00};                                    
+            end
+
+            `EXE_BEQ:begin//Branch If Equal
+            en_rd1 = 1;//rs
+            en_rd2 = 1;//rt
+            en_wd = 0;
+            Ins_Valid = 1;//指令有效
+            op = `EXE_BEQ_OP; 
+            sel = `EXE_RES_JUMP_BRANCH; //不对GPR进行操作
+            link_address = 0; //rd
+            if(num1 == num2) begin//源操作数的取出根据不同的数据相关的情况有不同的取值
+                next_ins_in_delayslot = 1;
+                branch_flag = 1;
+                branch_target_address = pc_plus4 + offset_sll2_signextend;
+            end                                    
+            end
+
+            `EXE_BNE:begin//Branch If Not Equal
+            en_rd1 = 1;//rs
+            en_rd2 = 1;//rt
+            en_wd = 0;
+            Ins_Valid = 1;//指令有效
+            op = `EXE_BNE_OP; 
+            sel = `EXE_RES_JUMP_BRANCH; //不对GPR进行操作
+            link_address = 0; //rd
+            if(num1 != num2) begin
+                next_ins_in_delayslot = 1;
+                branch_flag = 1;
+                branch_target_address = pc_plus4 + offset_sll2_signextend;
+            end                                    
+            end
+
+            `EXE_BGTZ:begin//Branch If Greater than zero 
+            en_rd1 = 1;//rs
+            en_rd2 = 0;//rt
+            en_wd = 0;
+            Ins_Valid = 1;//指令有效
+            op = `EXE_BGTZ_OP; 
+            sel = `EXE_RES_JUMP_BRANCH; //不对GPR进行操作
+            link_address = 0; //rd
+            if((num1[31] == 0) && (num1 != 0)) begin
+                next_ins_in_delayslot = 1;
+                branch_flag = 1;
+                branch_target_address = pc_plus4 + offset_sll2_signextend;
+            end
+            end
+
+            `EXE_BLEZ:begin//Branch If Less than zero  or equal
+            en_rd1 = 1;//rs
+            en_rd2 = 0;//rt
+            en_wd = 0;
+            Ins_Valid = 1;//指令有效
+            op = `EXE_BLEZ_OP; 
+            sel = `EXE_RES_JUMP_BRANCH; //不对GPR进行操作
+            link_address = 0; //rd
+            if((num1[31] == 1) || (num1 == 0))begin//负数或者为0
+                next_ins_in_delayslot = 1;
+                branch_flag = 1;
+                branch_target_address = pc_plus4 + offset_sll2_signextend;
+            end
+            end
+
             `EXE_SPECIAL2_INST:begin
                 case (op3)
                 `EXE_CLO:begin //只用到rs和rd
@@ -512,10 +650,79 @@ always @(*) begin
                 end 
                 endcase
             end
-            default: begin
+            
+
+            `EXE_REGIMM_INST:begin
+                case(op4)
+                    `EXE_BLTZ:begin//Branch less than zero
+                        en_rd1 = 1;//rs
+                        en_rd2 = 0;
+                        en_wd = 0;//
+                        Ins_Valid = 1;//指令有效
+                        op = `EXE_BLTZ_OP; 
+                        sel = `EXE_RES_JUMP_BRANCH; 
+                        link_address = 0; //rd
+                        if(num1[31] ==1) begin
+                            next_ins_in_delayslot = 1;
+                            branch_flag = 1;
+                            branch_target_address = pc_plus4 + offset_sll2_signextend;
+                        end
+                    end
+
+                    `EXE_BLTZAL:begin//Branch less than zero and link
+                        en_rd1 = 1;//rs
+                        en_rd2 = 0;
+                        en_wd = 1;//
+                        Ins_Valid = 1;//指令有效
+                        op = `EXE_BLTZAL_OP; 
+                        sel = `EXE_RES_JUMP_BRANCH; 
+                        desReg_addr = 5'b11111;//默认将返回地址存到$31
+                        link_address = pc_plus8; //rd
+                        if(num1[31] ==1) begin
+                            next_ins_in_delayslot = 1;
+                            branch_flag = 1;
+                            branch_target_address = pc_plus4 + offset_sll2_signextend;
+                        end
+                    end
+
+                    `EXE_BGEZAL:begin//Branch greater or equal zero and link
+                        en_rd1 = 1;//rs
+                        en_rd2 = 0;
+                        en_wd = 1;//
+                        Ins_Valid = 1;//指令有效
+                        op = `EXE_BGEZAL_OP; 
+                        sel = `EXE_RES_JUMP_BRANCH;
+                        desReg_addr = 5'b11111;//默认将返回地址存到$31 
+                        link_address = pc_plus8; //rd
+                        if(num1[31] == 0) begin
+                            next_ins_in_delayslot = 1;
+                            branch_flag = 1;
+                            branch_target_address = pc_plus4 + offset_sll2_signextend;
+                        end
+                    end
+
+                    `EXE_BGEZ:begin//Branch greater or equal zero
+                        en_rd1 = 1;//rs
+                        en_rd2 = 0;
+                        en_wd = 0;//
+                        Ins_Valid = 1;//指令有效
+                        op = `EXE_BGEZ_OP; 
+                        sel = `EXE_RES_JUMP_BRANCH; 
+                        link_address = 0; //rd
+                        if(num1[31] == 0) begin
+                            next_ins_in_delayslot = 1;
+                            branch_flag = 1;
+                            branch_target_address = pc_plus4 + offset_sll2_signextend;
+                        end
+                    end
+
+                    default: begin
+                    end
+                endcase       
+            end
+            default:begin
             end
         endcase
-
         if(pc_ins[31:21] == 11'b000_0000_0000) begin //使用case排除先后
             case (op3) //case功能码
                 `EXE_SLL:begin
@@ -597,5 +804,14 @@ always @(*) begin
         StopReq_from_decode = 0;
     else
         StopReq_from_decode = `NoStop;//加载存储才使用
+end
+//给this_ins_in_delayslot_o赋值
+always @(*) begin
+    if(!rst_n)begin
+        this_ins_in_delayslot_o = 0;
+    end
+    else begin
+        this_ins_in_delayslot_o = this_ins_in_delayslot_i;
+    end
 end
 endmodule

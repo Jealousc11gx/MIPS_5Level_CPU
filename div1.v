@@ -1,9 +1,4 @@
 /*`include "define.v"
-parameter IDLE = 2'b00; //空闲
-parameter DIVING = 2'b01;//正在进行
-parameter FINISH = 2'b10;//运行结束
-parameter EXCEPT = 2'b11;//除数为0.异常结束
-
 module div1 (
     input wire clk,
     input wire rst_n,
@@ -17,6 +12,11 @@ module div1 (
     output reg complete_flag,//运算完成标志
     output reg [`DivResultBus] div_result//结果
 );
+    parameter IDLE = 2'b00; //空闲
+    parameter DIVING = 2'b01;//正在进行
+    parameter FINISH = 2'b10;//运行结束
+    parameter EXCEPT = 2'b11;//除数为0.异常结束
+    
     wire [32:0] minuend_n;//n为除数，minuend被减数 这里是相减结果小于0情况下更新被减数
     reg [31:0] divisor;//除数
     reg [64:0] dividend;//？
@@ -125,8 +125,5 @@ module div1 (
     end
 
 endmodule
+
 */
-
-
-
-//此模块作废，三段式描述这个状态机感觉有非常大的问题 

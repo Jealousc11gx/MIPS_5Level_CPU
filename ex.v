@@ -9,6 +9,9 @@ module ex (
     input wire [`Reg_AddrBus] desReg_addr,
     input wire en_wd,
 
+    input wire [`DataWidth-1:0] link_address,
+    input wire this_ins_in_delayslot,
+
     //来自lo和hi的输入
     input wire [`DataWidth-1:0] hi_i,
     input wire [`DataWidth-1:0] lo_i,
@@ -486,6 +489,9 @@ module ex (
             end
             `EXE_RES_ARITHMETIC:begin
                 result = ArithRes;
+            end
+            `EXE_RES_JUMP_BRANCH:begin
+                result = link_address;
             end
             default: begin 
                 result = 0;

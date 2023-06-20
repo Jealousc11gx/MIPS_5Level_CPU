@@ -59,9 +59,16 @@ module MIPS_CPU (
     wire  en_wd;
     wire  [4:0]  desReg_addr;
 
+    wire [`DataWidth-1:0] link_address_i;
+    wire next_ins_in_delayslot_i;
+    wire this_ins_in_delayslot_de;
+
     //给到ctrl输出
 
     wire StopReq_from_decode;
+
+    wire branch_flag;
+    wire [`DataWidth-1:0] branch_target_address;
 
 
     //********************************de_ex信号***********************
@@ -74,6 +81,10 @@ module MIPS_CPU (
     wire  [`DataWidth-1:0]  num2_de_ex;
     wire  [`Reg_AddrBus] desReg_addr_de_ex;
     wire  en_wd_de_ex;
+
+    wire this_ins_in_delayslot_o;
+    wire [`DataWidth-1:0]link_address_o;
+    wire next_ins_in_delayslot_o;
 
     //wire [`StopWidth] stop_de_ex;
     //assign stop_de_ex = stop;
@@ -164,6 +175,8 @@ module MIPS_CPU (
     .clk                     ( clk     ),
     .rst_n                   ( rst_n   ),
     .stop                    ( stop    ),
+    .branch_flag             ( branch_flag             ),
+    .branch_target_address   ( branch_target_address   ),    
 
     .en                      ( en_rom  ),
     .pc                      ( pc      )
@@ -176,7 +189,7 @@ module MIPS_CPU (
         .rom_ins                 ( rom_data     ),
         .clk                     ( clk          ),
         .rst_n                   ( rst_n        ),
-        .stop                    ( stop         ),        
+        .stop                    ( stop         ),
 
         .pc_if                   ( pc_if        ),
         .rom_ins_if              ( rom_ins_if   )
@@ -205,6 +218,7 @@ module MIPS_CPU (
     .rd2_data                ( rd2_data      ),
     .pc_ins                  ( rom_ins_if    ),
     .pc                      ( pc_if         ),
+    .this_ins_in_delayslot_i ( next_ins_in_delayslot_o  ),    
     //ex阶段数据回推
     .ex_en_wd                ( en_wd_ex          ),
     .ex_desReg_addr          ( desReg_addr_ex    ),
@@ -228,6 +242,12 @@ module MIPS_CPU (
     .en_wd                   ( en_wd         ),
     .desReg_addr             ( desReg_addr   ),
 
+    .this_ins_in_delayslot_o  ( this_ins_in_delayslot_de  ),
+    .link_address             ( link_address_i            ),
+    .next_ins_in_delayslot    ( next_ins_in_delayslot_i   ),
+    .branch_flag              ( branch_flag               ),
+    .branch_target_address    ( branch_target_address     ),    
+
     //给到ctrl的输出
     .StopReq_from_decode     (StopReq_from_decode)
 );
@@ -245,13 +265,21 @@ de_ex  u_de_ex (
     .desReg_addr                    ( desReg_addr                     ),
     .stop                           ( stop                            ),
 
+    .link_address_i                 ( link_address_i                  ),
+    .next_ins_in_delayslot_i        ( next_ins_in_delayslot_i         ),
+    .this_ins_in_delayslot_i        ( this_ins_in_delayslot_de        ),        
+
 
     .op_ex                          ( op_ex                           ),
     .sel_ex                         ( sel_ex                          ),
     .num1_ex                        ( num1_de_ex                      ),
     .num2_ex                        ( num2_de_ex                      ),
     .desReg_addr_ex                 (  desReg_addr_de_ex              ),
-    .en_wd_ex                       ( en_wd_de_ex                     )
+    .en_wd_ex                       ( en_wd_de_ex                     ),
+
+    .link_address_o                 ( link_address_o                  ),
+    .next_ins_in_delayslot_o        (next_ins_in_delayslot_o          ),
+    .this_ins_in_delayslot_o        (this_ins_in_delayslot_o          )        
 );
 
 
@@ -263,6 +291,9 @@ ex  u_ex (
     .num2                    ( num2_de_ex    ),
     .en_wd                   ( en_wd_de_ex        ),
     .desReg_addr             ( desReg_addr_de_ex  ),
+
+    .link_address            ( link_address_o            ),
+    .this_ins_in_delayslot   ( this_ins_in_delayslot_o   ),    
 
     .hi_i                    ( hi_i          ),
     .lo_i                    ( lo_i          ),
