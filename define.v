@@ -239,6 +239,8 @@
 `define INS_ADDR_BUS 31:0 //地址线位宽
 `define INS_ROM_NUM 131071 //实际使用大小
 `define INS_ROM_NUM_LOG2 17  //地址线实际使用位宽
+`define RAM_NUM 131071 //实际使用大小
+`define RAM_NUM_LOG2 17  //地址线实际使用位宽
 
 //*****************流水线暂停机制
 
@@ -251,3 +253,8 @@
 
 `define DivResultBus 63:0 //64位宽度
 `define DivBus 31:0 //宽度
+
+//***********************访存指令
+
+`define READ 0
+`define WRITE 1

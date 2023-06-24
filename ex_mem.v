@@ -7,6 +7,10 @@ module ex_mem (
     input wire [`Reg_AddrBus] desReg_addr,
     input wire [`DataWidth-1:0] result,
 
+    input wire [7:0] op_i,
+    input wire [`DataWidth-1:0] num2_i,
+    input wire [`DataWidth-1:0] ram_addr_ex,
+
     input wire [`DataWidth-1:0] ex_hi_i,
     input wire [`DataWidth-1:0] ex_lo_i,
     input wire ex_en_hilo_i,
@@ -16,6 +20,10 @@ module ex_mem (
 
     //from ctrl
     input wire [5:0] stop,
+
+    output reg [7:0] op_mem,
+    output reg [`DataWidth-1:0] num2_mem,
+    output reg [`DataWidth-1:0] ram_addr_mem,
 
     output reg en_wd_ex_mem,
     output reg [`Reg_AddrBus] desReg_addr_ex_mem,
@@ -38,6 +46,9 @@ module ex_mem (
             mem_en_hilo_o <= 0;
             hilo_tmp_o <= 0;
             count_o <= 0;
+            op_mem <= 0;
+            num2_mem <= 0;
+            ram_addr_mem <= 0;
         end
         else if((stop[3] ==`Stop)&&(stop[4]==`NoStop)) begin//流水线暂停
             en_wd_ex_mem <= 0;
@@ -48,6 +59,9 @@ module ex_mem (
             mem_en_hilo_o <= 0;
             hilo_tmp_o <= hilo_tmp_i;
             count_o <= count_i;
+            op_mem <= 0;
+            num2_mem <= 0;
+            ram_addr_mem <= 0;            
         end        
         else if(stop[3]==`NoStop) begin
             en_wd_ex_mem <= en_wd;
@@ -58,6 +72,9 @@ module ex_mem (
             mem_en_hilo_o <= ex_en_hilo_i;
             hilo_tmp_o <= 0;
             count_o <= 0;
+            op_mem <= op_i;
+            num2_mem <= num2_i;
+            ram_addr_mem <= ram_addr_ex;            
         end
     end
 endmodule

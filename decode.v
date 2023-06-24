@@ -17,7 +17,7 @@ module decode (
     //多行同时编辑 ctrl shift 
     //ex阶段数据回写
     input wire ex_en_wd,
-    input wire [4:0] ex_desReg_addr,
+    input wire [4:0] ex_desReg_addr,//还有的作用不是数据前推，而是使用延迟处理的办法解决load相关问题
     input wire [`DataWidth-1:0] ex_result,
 
     //mem阶段数据回写
@@ -28,6 +28,8 @@ module decode (
     //当前指令是否位于延迟槽
     input wire this_ins_in_delayslot_i,
 
+    //得到来自ex阶段的op码
+    input wire [7:0] op_from_ex,
     //向GPR中给出两个读使能和两个读地址 对应rs和rt
     output reg en_rd1,
     output reg en_rd2,
@@ -42,6 +44,8 @@ module decode (
     output reg en_wd, //是否写回寄存器
     output reg [4:0] desReg_addr, //写回寄存器的地址
 
+    output wire [`DataWidth-1:0] rom_ins_de,//直接传下去的指令
+
     //输出当前指令是否位于延迟槽，存储的返回地址，下一条指令是否位于延迟槽，是否要转移，转移的目标地址
     output reg this_ins_in_delayslot_o,
     output reg [`DataWidth-1:0] link_address,
@@ -51,7 +55,7 @@ module decode (
 
     //向ctrl模块给出流水线暂停信号
 
-    output reg StopReq_from_decode
+    output wire StopReq_from_decode//加载存储指令的时候使用
 );
     wire [5:0]op1 = pc_ins [31:26]; //op位pc的高6位 指令码
     wire [4:0]op2 = pc_ins [10:6];//sa
@@ -62,13 +66,31 @@ module decode (
 
     reg Ins_Valid; //指令有效性
 
+    reg StopReq_for_Num1_load;
+    reg StopReq_for_Num2_load;
+
     wire [`DataWidth-1:0] pc_plus4;//指令地址按字节编址+4,也就是延迟槽指令
     wire [`DataWidth-1:0] pc_plus8;//返回地址
     wire [`DataWidth-1:0] offset_sll2_signextend;//offset 左移两位(因为字节编码和按字寻址的原因),符号拓展(指令对齐)
+    wire Last_Ins_is_Load;
+
 
     assign pc_plus4 = pc + 4;
     assign pc_plus8 = pc + 8;
     assign offset_sll2_signextend = {{14{pc_ins[15]}},pc_ins[15:0],2'b0};
+    assign rom_ins_de = pc_ins;
+
+    assign StopReq_from_decode = StopReq_for_Num1_load | StopReq_for_Num2_load;//暂停流水线请求
+    
+    assign Last_Ins_is_Load = ( (op_from_ex == `EXE_LB_OP) ||
+                                (op_from_ex == `EXE_LBU_OP)||
+                                (op_from_ex == `EXE_LH_OP) ||
+                                (op_from_ex == `EXE_LHU_OP)||
+                                (op_from_ex == `EXE_LW_OP) ||
+                                (op_from_ex == `EXE_LWL_OP)||
+                                (op_from_ex == `EXE_LWR_OP)||
+                                (op_from_ex == `EXE_SC_OP) ||
+                                (op_from_ex == `EXE_LL_OP))?1:0;//是否存在load相关
 
 //进行初始化
 always @(*) begin
@@ -321,7 +343,7 @@ always @(*) begin
                                     op = `EXE_MULTU_OP; 
                                     sel = `EXE_RES_NOP; //不对GPR进行操作
                                     end
-
+//*************************************************************除法指令*********************************************
                                     `EXE_DIV:begin
                                     en_rd1 = 1;//读端口1
                                     en_rd2 = 1;//读端口2
@@ -331,7 +353,6 @@ always @(*) begin
                                     sel = `EXE_RES_NOP; //不对GPR进行操作
                                     end
 
-
                                     `EXE_DIVU:begin
                                     en_rd1 = 1;//读端口1
                                     en_rd2 = 1;//读端口2
@@ -340,7 +361,7 @@ always @(*) begin
                                     op = `EXE_DIVU_OP; 
                                     sel = `EXE_RES_NOP; //不对GPR进行操作
                                     end
-                                    
+//*************************************************************跳转指令*********************************************                                    
                                     `EXE_JR:begin//Jump Register
                                     en_rd1 = 1;//rs
                                     en_rd2 = 0;
@@ -378,7 +399,7 @@ always @(*) begin
 
             //立即数指令也即是I型指令 出去前六位指令码和最后六位操作码，之间的rs rt rd sa中，I型指令很明显的没有rd和sa，其将立即数作为操作数之一，其操作数为rs和imm
             //没有了rd，写入rt，因此目的地也需要更改
-
+//*************************************************************算数指令*********************************************
             `EXE_ANDI:begin
             en_rd1 = 1;//读端口1
             en_rd2 = 0;//读端口2
@@ -470,7 +491,7 @@ always @(*) begin
             sel = `EXE_RES_ARITHMETIC;
             Imm = {{16{pc_ins[15]}},pc_ins[15:0]};//Sign Extend            
             end
-
+//*************************************************************移位指令*********************************************
             `EXE_SLTI:begin //看作空操作！
             en_rd1 = 1;//读端口1
             en_rd2 = 0;//读端口2
@@ -492,7 +513,7 @@ always @(*) begin
             sel = `EXE_RES_ARITHMETIC;           
             Imm = {{16{pc_ins[15]}},pc_ins[15:0]};//Sign Extend  
             end
-
+//*************************************************************跳转与分支指令*********************************************
             `EXE_J:begin//J inst_index有26位
             en_rd1 = 0;
             en_rd2 = 0;
@@ -579,7 +600,7 @@ always @(*) begin
                 branch_target_address = pc_plus4 + offset_sll2_signextend;
             end
             end
-
+//*************************************************************算数指令，累乘加，累乘减*********************************************
             `EXE_SPECIAL2_INST:begin
                 case (op3)
                 `EXE_CLO:begin //只用到rs和rd
@@ -651,7 +672,7 @@ always @(*) begin
                 endcase
             end
             
-
+//*************************************************************分支指令*********************************************
             `EXE_REGIMM_INST:begin
                 case(op4)
                     `EXE_BLTZ:begin//Branch less than zero
@@ -720,9 +741,128 @@ always @(*) begin
                     end
                 endcase       
             end
+//*************************************************************访存指令*********************************************
+//分为加载和存储指令
+//*************************************************************加载指令*********************************************
+            `EXE_LB:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 0;//不需要读rt
+                en_wd = 1;//需要写入
+                desReg_addr = op4;//写入rt
+                Ins_Valid = 1;//指令有效
+                op = `EXE_LB_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+
+            `EXE_LBU:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 0;//不需要读rt
+                en_wd = 1;//需要写入
+                desReg_addr = op4;//写入rt
+                Ins_Valid = 1;//指令有效
+                op = `EXE_LBU_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+
+            `EXE_LH:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 0;//不需要读rt
+                en_wd = 1;//需要写入
+                desReg_addr = op4;//写入rt
+                Ins_Valid = 1;//指令有效
+                op = `EXE_LH_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+
+            `EXE_LHU:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 0;//不需要读rt
+                en_wd = 1;//需要写入
+                desReg_addr = op4;//写入rt
+                Ins_Valid = 1;//指令有效
+                op = `EXE_LHU_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+
+            `EXE_LW:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 0;//不需要读rt
+                en_wd = 1;//需要写入
+                desReg_addr = op4;//写入rt
+                Ins_Valid = 1;//指令有效
+                op = `EXE_LW_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+
+            `EXE_LWL:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 1;//需要读rt LWL指令不对齐，需要对目标寄存器进行部分修改 
+                en_wd = 1;//需要写入
+                desReg_addr = op4;//写入rt
+                Ins_Valid = 1;//指令有效
+                op = `EXE_LWL_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+            
+            `EXE_LWR:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 1;//需要读rt
+                en_wd = 1;//需要写入
+                desReg_addr = op4;//写入rt
+                Ins_Valid = 1;//指令有效
+                op = `EXE_LWR_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+//*************************************************************存储指令*********************************************            
+            `EXE_SB:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 1;//需要读rt
+                en_wd = 0;//不需要写入
+                Ins_Valid = 1;//指令有效
+                op = `EXE_SB_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+            
+            `EXE_SH:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 1;//需要读rt
+                en_wd = 0;//不需要写入
+                Ins_Valid = 1;//指令有效
+                op = `EXE_SH_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+            
+            `EXE_SW:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 1;//需要读rt
+                en_wd = 0;//不需要写入
+                Ins_Valid = 1;//指令有效
+                op = `EXE_SW_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+            
+            `EXE_SWL:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 1;//需要读rt
+                en_wd = 0;//不需要写入
+                Ins_Valid = 1;//指令有效
+                op = `EXE_SWL_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+
+            `EXE_SWR:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base
+                en_rd2 = 1;//需要读rt
+                en_wd = 0;//不需要写入
+                Ins_Valid = 1;//指令有效
+                op = `EXE_SWR_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+
             default:begin
             end
         endcase
+//*************************************************************移位指令*********************************************        
         if(pc_ins[31:21] == 11'b000_0000_0000) begin //使用case排除先后
             case (op3) //case功能码
                 `EXE_SLL:begin
@@ -766,8 +906,11 @@ always @(*) begin
 end
 //给num1赋值
 always @(*) begin
+    StopReq_for_Num1_load = `NoStop;
     if(!rst_n)
         num1 = 0;
+    else if( (en_rd1) && (rd1_addr == ex_desReg_addr) && (Last_Ins_is_Load) )//延后处理
+        StopReq_for_Num1_load = `Stop;
     //解决访存和执行阶段的数据冲突
     else if( (en_rd1) && (rd1_addr == ex_desReg_addr) && (ex_en_wd) )//译码阶段要读取的寄存器地址和执行阶段写入的寄存器地址一致的话，进行数据前推
         num1 = ex_result;
@@ -783,8 +926,11 @@ always @(*) begin
 end
 //给num2赋值 
 always @(*) begin
+    StopReq_for_Num2_load = `NoStop;
     if(!rst_n)
         num2 = 0;
+    else if( (en_rd2) && (rd2_addr == ex_desReg_addr) && (Last_Ins_is_Load) )//延后处理
+        StopReq_for_Num2_load = `Stop;        
     else if( (en_rd2) && (rd2_addr == ex_desReg_addr) && (ex_en_wd) )//译码阶段要读取的寄存器地址和执行阶段写入的寄存器地址一致的话，进行数据前推
         num2 = ex_result;
     //ctrl shift + 上 复制一整行
@@ -798,13 +944,6 @@ always @(*) begin
         num2 = 0;
 end
 
-//给Stop赋值
-always @(*) begin
-    if(!rst_n)
-        StopReq_from_decode = 0;
-    else
-        StopReq_from_decode = `NoStop;//加载存储才使用
-end
 //给this_ins_in_delayslot_o赋值
 always @(*) begin
     if(!rst_n)begin

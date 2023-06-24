@@ -14,12 +14,13 @@ module de_ex (
     input wire next_ins_in_delayslot_i,
     input wire this_ins_in_delayslot_i,
     input wire [`DataWidth-1:0]link_address_i,
+    input wire [`DataWidth-1:0] rom_ins_de,
 
     //from ctrl
     input wire [`StopWidth] stop,
 
     //output
-
+    output reg [`DataWidth-1:0] rom_ins_ex,
     output reg [7:0]op_ex,
     output reg [2:0]sel_ex,
     output reg [`DataWidth-1:0] num1_ex,
@@ -42,6 +43,7 @@ module de_ex (
                 next_ins_in_delayslot_o <= 0;
                 this_ins_in_delayslot_o <= 0;
                 link_address_o <= 0;
+                rom_ins_ex <= 0;
         end
         else if((stop[2] ==`Stop)&&(stop[3] ==`NoStop)) begin//流水线停止
                 op_ex <= `EXE_NOP_OP;
@@ -52,7 +54,8 @@ module de_ex (
                 en_wd_ex <= 0;
                 next_ins_in_delayslot_o <= 0;
                 this_ins_in_delayslot_o <= 0;
-                link_address_o <= 0;                
+                link_address_o <= 0;
+                rom_ins_ex <= 0;                
         end
         else if((stop[2] ==`NoStop)) begin
                 op_ex <= op;
@@ -64,6 +67,7 @@ module de_ex (
                 next_ins_in_delayslot_o <= next_ins_in_delayslot_i;
                 this_ins_in_delayslot_o <= this_ins_in_delayslot_i;
                 link_address_o <= link_address_i;
+                rom_ins_ex <= rom_ins_de;                
         end        
     end
 endmodule

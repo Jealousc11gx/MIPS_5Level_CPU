@@ -8,6 +8,7 @@ module ex (
     input wire [`DataWidth-1:0] num2,
     input wire [`Reg_AddrBus] desReg_addr,
     input wire en_wd,
+    input wire [`DataWidth-1:0] rom_ins_ex,
 
     input wire [`DataWidth-1:0] link_address,
     input wire this_ins_in_delayslot,
@@ -37,7 +38,7 @@ module ex (
     //输出 是否要写回？ 写回的地址？ 运算的结果？
     //输出向de阶段的数据回推
     output reg en_wd_ex,
-    output reg [`Reg_AddrBus] desReg_addr_ex,
+    output reg [`Reg_AddrBus] desReg_addr_ex,//同时还有处理load相关的作用
     output reg [`DataWidth-1:0] result,
 
     //输出向下一阶段传递的是否写特殊寄存器，以及写lo和hi的数据
@@ -55,7 +56,11 @@ module ex (
     output reg [`DivBus] div_opdata2,
     output reg start_flag,
     //暂停机制输出
-    output reg StopReq_from_ex
+    output reg StopReq_from_ex,
+    //输出访存指令需要的信号:op,num2,ram_addr
+    output wire [7:0] op_o,//输出的op码 同时还有处理load相关的作用
+    output wire [`DataWidth-1:0] num2_o,//对于store，是需要存储的数据，对于load，是对于lwl和lwr的初始值
+    output wire [`DataWidth-1:0] ram_addr//存储器地址,由计算得出
 );
     reg [`DataWidth-1:0] LogicOut;//存储逻辑输出
     reg [`DataWidth-1:0] ShiftRes;//存储移位输出
@@ -85,6 +90,10 @@ module ex (
 
     reg StopReq_for_div;
 
+    //访存指令的输出
+    assign op_o = op;
+    assign num2_o = num2;
+    assign ram_addr = {{16{rom_ins_ex[15]}},rom_ins_ex[15:0]} + num1;//store都是符号拓展
     //减法或比较运算 决定减数是补码还是原码***********************************
     assign num2_i_mux =((op ==`EXE_SUB_OP) || //减法
                         (op ==`EXE_SUBU_OP) || //无符号减法

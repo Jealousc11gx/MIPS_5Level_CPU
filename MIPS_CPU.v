@@ -14,6 +14,14 @@ module MIPS_CPU (
     input wire rst_n,
     input wire [`Ins_Addr-1:0] rom_data,//输入指令
 
+    input wire [`Ins_Addr-1:0] data_from_ram,
+
+    output wire wr_en,
+    output wire ram_en,
+    output wire [3:0]Bits_Sel,
+    output wire [`Ins_Addr-1:0] ram_addr_o,
+    output wire [`DataWidth-1:0]data_to_ram,
+
     output wire en_rom,
     output wire [`Ins_Addr-1:0] rom_addr //输出指令地址
 );
@@ -63,6 +71,8 @@ module MIPS_CPU (
     wire next_ins_in_delayslot_i;
     wire this_ins_in_delayslot_de;
 
+    wire [`DataWidth-1:0] rom_ins_de;//输出的指令，用于加载存储指令
+
     //给到ctrl输出
 
     wire StopReq_from_decode;
@@ -86,9 +96,7 @@ module MIPS_CPU (
     wire [`DataWidth-1:0]link_address_o;
     wire next_ins_in_delayslot_o;
 
-    //wire [`StopWidth] stop_de_ex;
-    //assign stop_de_ex = stop;
-
+    wire [`DataWidth-1:0] rom_ins_ex;
 
     //**********************************ex信号*************************
 
@@ -100,6 +108,10 @@ module MIPS_CPU (
     wire ex_en_hilo;
     wire [`DataWidth-1:0] ex_hi_o;
     wire [`DataWidth-1:0] ex_lo_o;
+
+    wire [`DataWidth-1:0] num2_o;
+    wire [`DataWidth-1:0] ram_addr;
+    wire [7:0] op_o;
 
     //多周期指令计数器和中间数据
 
@@ -124,8 +136,9 @@ module MIPS_CPU (
     wire [`DataWidth-1:0] mem_hi_o;
     wire [`DataWidth-1:0] mem_lo_o;
 
-    //wire [`StopWidth] stop_ex_mem;
-    //assign stop_ex_mem = stop;
+    wire [7:0] op_mem;
+    wire [`DataWidth-1:0] num2_mem;
+    wire [`DataWidth-1:0] ram_addr_mem;
 
     //输入ex的多周期指令相关信息
 
@@ -218,7 +231,9 @@ module MIPS_CPU (
     .rd2_data                ( rd2_data      ),
     .pc_ins                  ( rom_ins_if    ),
     .pc                      ( pc_if         ),
-    .this_ins_in_delayslot_i ( next_ins_in_delayslot_o  ),    
+    .this_ins_in_delayslot_i ( next_ins_in_delayslot_o  ), 
+    //得到ex阶段的op码
+    .op_from_ex              (op_o               ),
     //ex阶段数据回推
     .ex_en_wd                ( en_wd_ex          ),
     .ex_desReg_addr          ( desReg_addr_ex    ),
@@ -241,6 +256,7 @@ module MIPS_CPU (
     .sel                     ( sel           ),
     .en_wd                   ( en_wd         ),
     .desReg_addr             ( desReg_addr   ),
+    .rom_ins_de              ( rom_ins_de    ),
 
     .this_ins_in_delayslot_o  ( this_ins_in_delayslot_de  ),
     .link_address             ( link_address_i            ),
@@ -267,9 +283,11 @@ de_ex  u_de_ex (
 
     .link_address_i                 ( link_address_i                  ),
     .next_ins_in_delayslot_i        ( next_ins_in_delayslot_i         ),
-    .this_ins_in_delayslot_i        ( this_ins_in_delayslot_de        ),        
+    .this_ins_in_delayslot_i        ( this_ins_in_delayslot_de        ),
+    .rom_ins_de                     ( rom_ins_de                      ),
 
 
+    .rom_ins_ex                     ( rom_ins_ex                      ),        
     .op_ex                          ( op_ex                           ),
     .sel_ex                         ( sel_ex                          ),
     .num1_ex                        ( num1_de_ex                      ),
@@ -291,6 +309,7 @@ ex  u_ex (
     .num2                    ( num2_de_ex    ),
     .en_wd                   ( en_wd_de_ex        ),
     .desReg_addr             ( desReg_addr_de_ex  ),
+    .rom_ins_ex              ( rom_ins_ex         ),
 
     .link_address            ( link_address_o            ),
     .this_ins_in_delayslot   ( this_ins_in_delayslot_o   ),    
@@ -330,7 +349,11 @@ ex  u_ex (
     //传到ex_mem的信号
     .hilo_tmp_o              ( hilo_tmp_o        ),
     .count_o                 ( count_ex_o        ),
-    .StopReq_from_ex         ( StopReq_from_ex   )
+    .StopReq_from_ex         ( StopReq_from_ex   ),
+
+    .op_o                    ( op_o                    ),
+    .num2_o                  ( num2_o                  ),
+    .ram_addr                ( ram_addr                )
 );
 
 
@@ -349,17 +372,23 @@ ex_mem  u_ex_mem (
     
     .en_wd_ex_mem               ( en_wd_ex_mem    ),
     .result_ex_mem              ( result_ex_mem   ),
-    .desReg_addr_ex_mem         ( desReg_addr_ex_mem),
-
+    .desReg_addr_ex_mem         ( desReg_addr_ex_mem),   
     .mem_hi_o                ( mem_hi_o        ),
     .mem_lo_o                ( mem_lo_o        ),
     .mem_en_hilo_o           ( mem_en_hilo     ),
     //from ex
     .hilo_tmp_i              ( hilo_tmp_o      ),
     .count_i                 ( count_ex_o      ),
+    .op_i                    ( op_o                    ),
+    .num2_i                  ( num2_o                  ),
+    .ram_addr_ex             ( ram_addr                ),
     //to ex
     .hilo_tmp_o              ( hilo_tmp_ex_mem_o   ),
-    .count_o                 ( count_ex_mem_o      )    
+    .count_o                 ( count_ex_mem_o      ),
+    //to mem
+    .op_mem                     (op_mem        ),
+    .num2_mem                   (num2_mem      ),
+    .ram_addr_mem               (ram_addr_mem  )        
 );
 
 
@@ -373,13 +402,24 @@ mem  u_mem (
     .lo_i                    ( mem_lo_o         ),
     .en_hilo_i               ( mem_en_hilo      ),
 
+    .op                      ( op_mem          ),
+    .ram_addr_i              ( ram_addr_mem    ),
+    .num2                    ( num2_mem        ),
+    .data_from_ram           ( data_from_ram   ),    
+
     .en_wd_mem               ( en_wd_mem    ),
     .result_mem              ( result_mem   ),
     .desReg_addr_mem         ( desReg_addr_mem),
 
     .hi_o                    ( hi_o_mem         ),
     .lo_o                    ( lo_o_mem         ),
-    .en_hilo_o               ( en_hilo_mem      )    
+    .en_hilo_o               ( en_hilo_mem      ),
+
+    .wr_en                   ( wr_en           ),
+    .ram_en                  ( ram_en          ),
+    .Bits_Sel                ( Bits_Sel        ),
+    .ram_addr_o              ( ram_addr_o      ),
+    .data_to_ram             ( data_to_ram     )        
 );
 
 
