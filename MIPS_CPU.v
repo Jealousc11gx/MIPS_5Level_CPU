@@ -155,6 +155,8 @@ module MIPS_CPU (
     wire [`DataWidth-1:0] hi_o_mem;
     wire [`DataWidth-1:0] lo_o_mem;
 
+    wire mem_LLbit_data;
+    wire mem_LLbit_en;
 
     //***************************mem_wb信号*************************
 
@@ -166,8 +168,8 @@ module MIPS_CPU (
     wire [`DataWidth-1:0] wb_hi_o;
     wire [`DataWidth-1:0] wb_lo_o;    
 
-    //wire [`StopWidth] stop_mem_wb;
-    //assign stop_mem_wb = stop;    
+    wire wb_LLbit_data;
+    wire wb_LLbit_en;
 
     //***************************hilo_reg信号*************************
 
@@ -182,6 +184,10 @@ module MIPS_CPU (
 
     wire [`DivResultBus] div_result;
     wire complete_flag;
+
+    //***************************LLbit信号*************************
+
+    wire LLbit_data_o;
 
     //****************************例化操作**************************
     pc  u_pc (
@@ -411,6 +417,10 @@ mem  u_mem (
     .result_mem              ( result_mem   ),
     .desReg_addr_mem         ( desReg_addr_mem),
 
+    .wb_LLbit_data           ( wb_LLbit_data   ),
+    .wb_LLbit_en             ( wb_LLbit_en     ),
+    .LLbit_data_i            ( LLbit_data_o    ),    
+
     .hi_o                    ( hi_o_mem         ),
     .lo_o                    ( lo_o_mem         ),
     .en_hilo_o               ( en_hilo_mem      ),
@@ -419,7 +429,9 @@ mem  u_mem (
     .ram_en                  ( ram_en          ),
     .Bits_Sel                ( Bits_Sel        ),
     .ram_addr_o              ( ram_addr_o      ),
-    .data_to_ram             ( data_to_ram     )        
+    .data_to_ram             ( data_to_ram     ),
+    .LLbit_data_o            ( mem_LLbit_data  ),
+    .LLbit_en_o              ( mem_LLbit_en    )    
 );
 
 
@@ -433,8 +445,12 @@ mem_wb  u_mem_wb (
 
     .mem_hi_i                       ( hi_o_mem                        ),
     .mem_lo_i                       ( lo_o_mem                        ),
-    .mem_en_hilo_i                  ( en_hilo_mem                     ),    
+    .mem_en_hilo_i                  ( en_hilo_mem                     ),
+    .mem_LLbit_en                   ( mem_LLbit_en                    ),
+    .mem_LLbit_data                 ( mem_LLbit_data                  ),        
 
+    .wb_LLbit_data                  ( wb_LLbit_data                   ),
+    .wb_LLbit_en                    ( wb_LLbit_en                     ),
     .result_wb                      ( result_wb                       ),
     .en_wb_wb                       ( en_wb_wb                        ),
     .desReg_addr_wb                 ( desReg_addr_wb                  ),
@@ -474,5 +490,15 @@ div1  u_div1 (
 
     .complete_flag           ( complete_flag   ),
     .div_result              ( div_result      )
+);
+
+LLbit  u_LLbit (
+    .clk                     ( clk            ),
+    .rst_n                   ( rst_n          ),
+    .Excep_Signal            ( 1'b0           ),
+    .LLbit_en                ( wb_LLbit_en    ),
+    .LLbit_data_i            ( wb_LLbit_data  ),
+
+    .LLbit_data_o            ( LLbit_data_o   )
 );
 endmodule

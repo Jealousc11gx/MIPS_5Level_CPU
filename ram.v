@@ -49,8 +49,8 @@ module ram (
                                 RAM1[ram_addr_i[`RAM_NUM_LOG2+1:2]],
                                 RAM0[ram_addr_i[`RAM_NUM_LOG2+1:2]]};
             end
-        end
         else begin
             data_from_ram = 0;
         end
+    end
 endmodule

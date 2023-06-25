@@ -859,6 +859,26 @@ always @(*) begin
                 sel = `EXE_RES_LOAD_STORE;//操作类型
             end
 
+//*************************************************************ll和sc指令*********************************************
+            `EXE_LL:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base GPR[Base]
+                en_rd2 = 1;//需要读rt
+                en_wd = 1;//需要写入
+                desReg_addr = op4;//写入rt                
+                Ins_Valid = 1;//指令有效
+                op = `EXE_LL_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end
+
+            `EXE_SC:begin //LOAD Bits [5:0]op [4:0]base [4:0]rt [15:0]offset
+                en_rd1 = 1;//需要读base GPR[Base]
+                en_rd2 = 1;//需要读rt
+                en_wd = 1;//需要写入
+                desReg_addr = op4;//写入rt                
+                Ins_Valid = 1;//指令有效
+                op = `EXE_SC_OP;//op码
+                sel = `EXE_RES_LOAD_STORE;//操作类型
+            end            
             default:begin
             end
         endcase

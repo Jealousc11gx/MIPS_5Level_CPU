@@ -15,6 +15,10 @@ module mem (
     input wire [`DataWidth-1:0] num2,//输入的num2，可以是写入的数据，可以是不对齐指令的初始值
     input wire [`DataWidth-1:0] data_from_ram,//读出的数据
 
+    input wire wb_LLbit_data,//为了防止数据相关，从mem_wb阶段传回的数据
+    input wire wb_LLbit_en,//为了防止数据相关，从mem_wb阶段传回的使能信号
+    input wire LLbit_data_i,//供sc阶段判断的llbit模块传来的数据
+
     //访存指令输出*************************************
     output reg en_wd_mem,
     output reg [`Reg_AddrBus] desReg_addr_mem,
@@ -28,12 +32,28 @@ module mem (
     output reg ram_en,//ram使能信号    
     output reg [3:0] Bits_Sel,//字节选择，适用于不对齐指令
     output reg [`DataWidth-1:0] ram_addr_o,//写入存储器的地址
-    output reg [`DataWidth-1:0] data_to_ram//写入数据  
+    output reg [`DataWidth-1:0] data_to_ram,//写入数据
+
+    output reg LLbit_data_o,
+    output reg LLbit_en_o
 );
 
     reg wr_en_reg;//为什么要单独把wr_en给成reg信号
     assign wr_en = wr_en_reg;
 
+    reg LLbit;//存储最新的LLbit内的值
+
+    always @(*) begin //防止数据相关，在时钟上升沿之前送回数据判断
+        if(!rst_n)begin
+            LLbit = 0;
+        end
+        else if(wb_LLbit_en)begin
+            LLbit = wb_LLbit_data;
+        end
+        else begin
+            LLbit = LLbit_data_i;
+        end
+    end
 
     always @(*) begin
         if(!rst_n) begin
@@ -48,6 +68,8 @@ module mem (
             Bits_Sel = 0;
             ram_addr_o = 0;
             data_to_ram = 0;
+            LLbit_data_o = 0;
+            LLbit_en_o = 0;
         end
         else begin
             en_wd_mem = en_wd;
@@ -60,7 +82,9 @@ module mem (
             ram_en = 0;
             Bits_Sel = 4'b1111;//？
             ram_addr_o = 0;
-            data_to_ram = 0;            
+            data_to_ram = 0;
+            LLbit_data_o = 0;
+            LLbit_en_o = 0;            
             case (op)
                 `EXE_LB_OP:begin
                     wr_en_reg = `READ;
@@ -319,6 +343,32 @@ module mem (
                     endcase
                 end
 
+                `EXE_LL_OP:begin
+                    wr_en_reg = `READ;//读
+                    ram_en = 1;//ram有效
+                    ram_addr_o = ram_addr_i;//存储地址
+                    result_mem = data_from_ram;
+                    Bits_Sel = 4'b1111;//读出一个字节
+                    LLbit_data_o = 1;//写一个1表示占用
+                    LLbit_en_o = 1;//使用LLbitReg
+                end
+
+                `EXE_SC_OP:begin
+                    if(LLbit_data_i)begin
+                        wr_en_reg = `WRITE;//写
+                        ram_en = 1;//ram有效
+                        ram_addr_o = ram_addr_i;//存储地址
+                        result_mem = 32'b1;//向rt中写入一个1
+                        data_to_ram = num2;//向存储地址处写入一个rt内的值
+                        Bits_Sel = 4'b1111;//存储一个字
+                        LLbit_data_o = 0;//占用结束
+                        LLbit_en_o = 1;//使用LLbitReg                        
+                    end
+                    else begin//向rt中写0
+                        result_mem = 32'b0;
+                    end
+                    
+                end                
                 default: begin
                 end
             endcase
