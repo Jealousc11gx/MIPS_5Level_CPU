@@ -15,6 +15,10 @@ module ex_mem (
     input wire [`DataWidth-1:0] ex_lo_i,
     input wire ex_en_hilo_i,
 
+    input wire [`DataWidth-1:0] ex_cp0_wdata,
+    input wire ex_cp0_rw_en,
+    input wire [4:0] ex_cp0_waddr,    
+
     input wire [`DoubleDataWidth-1:0] hilo_tmp_i,//多周期指令的临时结果存放
     input wire [1:0] count_i,//识别第几个执行的指令周期
 
@@ -33,6 +37,10 @@ module ex_mem (
     output reg [`DataWidth-1:0] mem_lo_o,
     output reg mem_en_hilo_o,
 
+    output reg [`DataWidth-1:0] mem_cp0_wdata_i,
+    output reg mem_cp0_rw_en_i,
+    output reg [4:0] mem_cp0_waddr_i,    
+
     output reg [`DoubleDataWidth-1:0] hilo_tmp_o,
     output reg [1:0] count_o
 );
@@ -49,6 +57,9 @@ module ex_mem (
             op_mem <= 0;
             num2_mem <= 0;
             ram_addr_mem <= 0;
+            mem_cp0_wdata_i <= 0;
+            mem_cp0_rw_en_i <= 0;
+            mem_cp0_waddr_i <= 0;              
         end
         else if((stop[3] ==`Stop)&&(stop[4]==`NoStop)) begin//流水线暂停
             en_wd_ex_mem <= 0;
@@ -61,7 +72,10 @@ module ex_mem (
             count_o <= count_i;
             op_mem <= 0;
             num2_mem <= 0;
-            ram_addr_mem <= 0;            
+            ram_addr_mem <= 0;
+            mem_cp0_wdata_i <= 0;
+            mem_cp0_rw_en_i <= 0;
+            mem_cp0_waddr_i <= 0;                         
         end        
         else if(stop[3]==`NoStop) begin
             en_wd_ex_mem <= en_wd;
@@ -74,7 +88,10 @@ module ex_mem (
             count_o <= 0;
             op_mem <= op_i;
             num2_mem <= num2_i;
-            ram_addr_mem <= ram_addr_ex;            
+            ram_addr_mem <= ram_addr_ex;
+            mem_cp0_wdata_i <= ex_cp0_wdata;
+            mem_cp0_rw_en_i <= ex_cp0_rw_en;
+            mem_cp0_waddr_i <= ex_cp0_waddr;                                     
         end
     end
 endmodule

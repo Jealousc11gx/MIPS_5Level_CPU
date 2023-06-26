@@ -15,7 +15,9 @@ module MIPS_CPU (
     input wire [`Ins_Addr-1:0] rom_data,//输入指令
 
     input wire [`Ins_Addr-1:0] data_from_ram,
+    input wire [5:0] interrupt,
 
+    output wire timer_interrupt,
     output wire wr_en,
     output wire ram_en,
     output wire [3:0]Bits_Sel,
@@ -126,6 +128,11 @@ module MIPS_CPU (
     wire [`DivBus]div_opdata1;
     wire [`DivBus]div_opdata2;
     wire start_flag;
+
+    wire  [4:0]  cp0_raddr;
+    wire  [`DataWidth-1:0]  ex_cp0_wdata;
+    wire  ex_cp0_rw_en;
+    wire  [4:0]  ex_cp0_waddr;    
     //********************************ex_mem信号*********************
 
     wire  en_wd_ex_mem;
@@ -145,6 +152,10 @@ module MIPS_CPU (
     wire [1:0] count_ex_mem_o;
     wire [`DoubleDataWidth-1:0] hilo_tmp_ex_mem_o;
 
+    wire  [`DataWidth-1:0]  mem_cp0_wdata_i;
+    wire  mem_cp0_rw_en_i;
+    wire  [4:0]  mem_cp0_waddr_i;    
+
     //******************************mem信号**************************
 
     wire  en_wd_mem;
@@ -158,6 +169,10 @@ module MIPS_CPU (
     wire mem_LLbit_data;
     wire mem_LLbit_en;
 
+    wire  [`DataWidth-1:0]  mem_cp0_wdata;
+    wire  mem_cp0_rw_en;
+    wire  [4:0]  mem_cp0_waddr;    
+
     //***************************mem_wb信号*************************
 
     wire  [`DataWidth-1:0]  result_wb;
@@ -170,6 +185,10 @@ module MIPS_CPU (
 
     wire wb_LLbit_data;
     wire wb_LLbit_en;
+
+    wire  [`DataWidth-1:0]  wb_cp0_wdata;
+    wire  wb_cp0_rw_en;
+    wire  [4:0]  wb_cp0_waddr;    
 
     //***************************hilo_reg信号*************************
 
@@ -188,6 +207,16 @@ module MIPS_CPU (
     //***************************LLbit信号*************************
 
     wire LLbit_data_o;
+
+    //***************************CP0信号*************************
+    wire  [`DataWidth-1:0]  count_o;
+    wire  [`DataWidth-1:0]  compare_o;
+    wire  [`DataWidth-1:0]  status_o;
+    wire  [`DataWidth-1:0]  cause_o;
+    wire  [`DataWidth-1:0]  epc_o;
+    wire  [`DataWidth-1:0]  config_o;
+    wire  [`DataWidth-1:0]  prid_o;
+    wire  [`DataWidth-1:0]  cp0_data;
 
     //****************************例化操作**************************
     pc  u_pc (
@@ -330,10 +359,18 @@ ex  u_ex (
     .mem_hi_i                ( hi_o_mem      ),
     .mem_lo_i                ( lo_o_mem      ),
     .mem_en_hilo             ( en_hilo_mem   ),
+    .mem_cp0_wdata           ( mem_cp0_wdata           ),
+    .mem_cp0_rw_en           ( mem_cp0_rw_en           ),
+    .mem_cp0_waddr           ( mem_cp0_waddr           ),    
 
     .wb_hi_i                 ( wb_hi_o       ),
     .wb_lo_i                 ( wb_lo_o       ),
     .wb_en_hilo              ( wb_en_hilo    ),
+    .wb_cp0_wdata            ( wb_cp0_wdata            ),
+    .wb_cp0_rw_en            ( wb_cp0_rw_en            ),
+    .wb_cp0_waddr            ( wb_cp0_waddr            ),
+
+    .cp0_data                ( cp0_data                ),        
 
     .desReg_addr_ex          ( desReg_addr_ex),
     .en_wd_ex                ( en_wd_ex    ),
@@ -359,7 +396,12 @@ ex  u_ex (
 
     .op_o                    ( op_o                    ),
     .num2_o                  ( num2_o                  ),
-    .ram_addr                ( ram_addr                )
+    .ram_addr                ( ram_addr                ),
+
+    .cp0_raddr               ( cp0_raddr               ),
+    .ex_cp0_wdata            ( ex_cp0_wdata            ),
+    .ex_cp0_rw_en            ( ex_cp0_rw_en            ),
+    .ex_cp0_waddr            ( ex_cp0_waddr            )
 );
 
 
@@ -373,7 +415,11 @@ ex_mem  u_ex_mem (
     .ex_hi_i                 ( ex_hi_o         ),
     .ex_lo_i                 ( ex_lo_o         ),
     .ex_en_hilo_i            ( ex_en_hilo     ),
-    .stop                    ( stop           ),//from ctrl    
+    .stop                    ( stop           ),//from ctrl
+
+    .ex_cp0_wdata            ( ex_cp0_wdata      ),
+    .ex_cp0_rw_en            ( ex_cp0_rw_en      ),
+    .ex_cp0_waddr            ( ex_cp0_waddr      ),        
 
     
     .en_wd_ex_mem               ( en_wd_ex_mem    ),
@@ -382,6 +428,9 @@ ex_mem  u_ex_mem (
     .mem_hi_o                ( mem_hi_o        ),
     .mem_lo_o                ( mem_lo_o        ),
     .mem_en_hilo_o           ( mem_en_hilo     ),
+    .mem_cp0_wdata_i         ( mem_cp0_wdata_i   ),
+    .mem_cp0_rw_en_i         ( mem_cp0_rw_en_i   ),
+    .mem_cp0_waddr_i         ( mem_cp0_waddr_i   ),
     //from ex
     .hilo_tmp_i              ( hilo_tmp_o      ),
     .count_i                 ( count_ex_o      ),
@@ -408,6 +457,10 @@ mem  u_mem (
     .lo_i                    ( mem_lo_o         ),
     .en_hilo_i               ( mem_en_hilo      ),
 
+    .mem_cp0_wdata_i         ( mem_cp0_wdata_i   ),
+    .mem_cp0_rw_en_i         ( mem_cp0_rw_en_i   ),
+    .mem_cp0_waddr_i         ( mem_cp0_waddr_i   ),    
+
     .op                      ( op_mem          ),
     .ram_addr_i              ( ram_addr_mem    ),
     .num2                    ( num2_mem        ),
@@ -416,6 +469,10 @@ mem  u_mem (
     .en_wd_mem               ( en_wd_mem    ),
     .result_mem              ( result_mem   ),
     .desReg_addr_mem         ( desReg_addr_mem),
+
+    .mem_cp0_wdata           ( mem_cp0_wdata     ),
+    .mem_cp0_rw_en           ( mem_cp0_rw_en     ),
+    .mem_cp0_waddr           ( mem_cp0_waddr     ),    
 
     .wb_LLbit_data           ( wb_LLbit_data   ),
     .wb_LLbit_en             ( wb_LLbit_en     ),
@@ -447,8 +504,15 @@ mem_wb  u_mem_wb (
     .mem_lo_i                       ( lo_o_mem                        ),
     .mem_en_hilo_i                  ( en_hilo_mem                     ),
     .mem_LLbit_en                   ( mem_LLbit_en                    ),
-    .mem_LLbit_data                 ( mem_LLbit_data                  ),        
+    .mem_LLbit_data                 ( mem_LLbit_data                  ),
 
+    .mem_cp0_wdata                  ( mem_cp0_wdata                   ),
+    .mem_cp0_rw_en                  ( mem_cp0_rw_en                   ),
+    .mem_cp0_waddr                  ( mem_cp0_waddr                   ),            
+
+    .wb_cp0_wdata                   ( wb_cp0_wdata                    ),
+    .wb_cp0_rw_en                   ( wb_cp0_rw_en                    ),
+    .wb_cp0_waddr                   ( wb_cp0_waddr                    ),
     .wb_LLbit_data                  ( wb_LLbit_data                   ),
     .wb_LLbit_en                    ( wb_LLbit_en                     ),
     .result_wb                      ( result_wb                       ),
@@ -500,5 +564,25 @@ LLbit  u_LLbit (
     .LLbit_data_i            ( wb_LLbit_data  ),
 
     .LLbit_data_o            ( LLbit_data_o   )
+);
+
+CP0  u_CP0 (
+    .clk                     ( clk               ),
+    .rst_n                   ( rst_n             ),
+    .w_data                  ( wb_cp0_wdata      ),
+    .w_addr                  ( wb_cp0_waddr      ),
+    .wr_en                   ( wb_cp0_rw_en      ),
+    .r_addr                  ( cp0_raddr          ),
+    .interrupt               ( interrupt         ),
+
+    .data_o                  ( cp0_data          ),
+    .count_o                 ( count_o           ),
+    .compare_o               ( compare_o         ),
+    .status_o                ( status_o          ),
+    .cause_o                 ( cause_o           ),
+    .epc_o                   ( epc_o             ),
+    .config_o                ( config_o          ),
+    .prid_o                  ( prid_o            ),
+    .timer_interrupt         ( timer_interrupt   )
 );
 endmodule

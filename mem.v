@@ -8,6 +8,9 @@ module mem (
     input wire [`DataWidth-1:0] hi_i,
     input wire [`DataWidth-1:0] lo_i,
     input wire en_hilo_i,
+    input wire [`DataWidth-1:0] mem_cp0_wdata_i,
+    input wire mem_cp0_rw_en_i,
+    input wire [4:0] mem_cp0_waddr_i,    
 
     //访存指令输入*************************************
     input wire [7:0] op,//指令码，进行什么操作
@@ -23,6 +26,10 @@ module mem (
     output reg en_wd_mem,
     output reg [`Reg_AddrBus] desReg_addr_mem,
     output reg [`DataWidth-1:0] result_mem,//这个是写到GPR中的结果
+
+    output reg [`DataWidth-1:0] mem_cp0_wdata,
+    output reg mem_cp0_rw_en,
+    output reg [4:0] mem_cp0_waddr,    
 
     output reg [`DataWidth-1:0] hi_o,
     output reg [`DataWidth-1:0] lo_o,
@@ -70,6 +77,9 @@ module mem (
             data_to_ram = 0;
             LLbit_data_o = 0;
             LLbit_en_o = 0;
+            mem_cp0_wdata = 0;
+            mem_cp0_rw_en = 0;
+            mem_cp0_waddr = 0;            
         end
         else begin
             en_wd_mem = en_wd;
@@ -84,7 +94,10 @@ module mem (
             ram_addr_o = 0;
             data_to_ram = 0;
             LLbit_data_o = 0;
-            LLbit_en_o = 0;            
+            LLbit_en_o = 0;
+            mem_cp0_wdata = mem_cp0_wdata_i;
+            mem_cp0_rw_en = mem_cp0_rw_en_i;
+            mem_cp0_waddr = mem_cp0_waddr_i;                         
             case (op)
                 `EXE_LB_OP:begin
                     wr_en_reg = `READ;

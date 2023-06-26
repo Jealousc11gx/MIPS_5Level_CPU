@@ -16,10 +16,18 @@ module min_sopc (
     wire [`INS_ADDR_BUS] ram_addr;
     wire [`DataWidth-1:0] data_to_ram;
 
+    wire timer_interrupt;
+    wire [5:0] interrupt;
+
+    assign interrupt = {5'b00000, timer_interrupt};
+
     MIPS_CPU  u_MIPS_CPU (
         .clk                     ( clk        ),
         .rst_n                   ( rst_n      ),
         .rom_data                ( rom_data   ),
+        .interrupt               ( interrupt  ),
+
+        .timer_interrupt         (timer_interrupt  ),
 
         .data_from_ram           ( data_from_ram   ),
 

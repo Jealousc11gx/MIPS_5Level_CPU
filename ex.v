@@ -19,13 +19,22 @@ module ex (
 
     //来自访存和回写阶段的数据前推
     //是否要写特殊寄存器？输入hi，输入lo
+    //*************************MEM***********************
     input wire [`DataWidth-1:0] mem_hi_i,
     input wire [`DataWidth-1:0] mem_lo_i,
     input wire mem_en_hilo,
 
+    input wire [`DataWidth-1:0] mem_cp0_wdata,
+    input wire mem_cp0_rw_en,
+    input wire [4:0] mem_cp0_waddr,
+    //**************************WB**************************
     input wire [`DataWidth-1:0] wb_hi_i,
     input wire [`DataWidth-1:0] wb_lo_i,
     input wire wb_en_hilo,
+
+    input wire [`DataWidth-1:0] wb_cp0_wdata,
+    input wire wb_cp0_rw_en,
+    input wire [4:0] wb_cp0_waddr,
 
     //多周期指令的输入
     input wire [`DoubleDataWidth-1:0] hilo_tmp_i,
@@ -34,6 +43,9 @@ module ex (
     //来自div模块的输入
     input wire [`DivResultBus] div_result,//除法结果
     input wire complete_flag,//是否完成
+
+    //来自CP0的回传数据
+    input wire [`DataWidth-1:0] cp0_data,
 
     //输出 是否要写回？ 写回的地址？ 运算的结果？
     //输出向de阶段的数据回推
@@ -60,7 +72,13 @@ module ex (
     //输出访存指令需要的信号:op,num2,ram_addr
     output wire [7:0] op_o,//输出的op码 同时还有处理load相关的作用
     output wire [`DataWidth-1:0] num2_o,//对于store，是需要存储的数据，对于load，是对于lwl和lwr的初始值
-    output wire [`DataWidth-1:0] ram_addr//存储器地址,由计算得出
+    output wire [`DataWidth-1:0] ram_addr,//存储器地址,由计算得出
+    //输出cp0所需的读取地址
+    output reg [4:0] cp0_raddr,
+    //输出向下一级传递的信号，是否读写，写地址，写数据
+    output reg [`DataWidth-1:0] ex_cp0_wdata,
+    output reg ex_cp0_rw_en,
+    output reg [4:0] ex_cp0_waddr
 );
     reg [`DataWidth-1:0] LogicOut;//存储逻辑输出
     reg [`DataWidth-1:0] ShiftRes;//存储移位输出
@@ -414,6 +432,16 @@ module ex (
                 `EXE_MFLO_OP:begin
                     MoveRes = LO;
                 end
+                `EXE_MFC0_OP:begin
+                    cp0_raddr = rom_ins_ex[15:11];//读地址
+                    MoveRes = cp0_data;//读取的数据
+                    if((mem_cp0_rw_en==1)&&(mem_cp0_waddr==rom_ins_ex[15:11]))begin
+                        MoveRes = mem_cp0_wdata;
+                    end
+                    else if((wb_cp0_rw_en==1)&&(wb_cp0_waddr==rom_ins_ex[15:11]))begin
+                        MoveRes = wb_cp0_wdata;
+                    end
+                end
                 default:begin
                     MoveRes = 0;
                 end
@@ -506,5 +534,23 @@ module ex (
                 result = 0;
             end
         endcase
+    end
+    //输出cp0相关的数据
+    always @(*) begin
+        if(!rst_n)begin
+            ex_cp0_rw_en = 0;
+            ex_cp0_waddr = 0;
+            ex_cp0_wdata = 0;
+        end
+        else if(op == `EXE_MTC0_OP) begin
+            ex_cp0_rw_en = 1;
+            ex_cp0_waddr = rom_ins_ex[15:11];
+            ex_cp0_wdata = num1;            
+        end
+        else begin
+            ex_cp0_rw_en = 0;
+            ex_cp0_waddr = 0;
+            ex_cp0_wdata = 0;            
+        end
     end
 endmodule

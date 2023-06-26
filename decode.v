@@ -922,6 +922,26 @@ always @(*) begin
                 end
             endcase
         end
+//*************************************************************协处理器访问指令*********************************************
+        if(pc_ins[31:21] == 11'b010000_00100)begin
+            en_rd1 = 1;//与rs无关
+            en_rd2 = 0;//需要读rt
+            rd1_addr = pc_ins[20:16];//读地址本来就是rt
+            en_wd = 0;//不需要写入GPR
+            Ins_Valid = 1;//指令有效
+            op = `EXE_MTC0_OP;//存到C0
+            sel = `EXE_RES_NOP;//操作类型
+            
+        end
+        else if(pc_ins[31:21] == 11'b010000_00000)begin
+            en_rd1 = 0;//与rs无关
+            en_rd2 = 0;//不需要读rt
+            en_wd = 1;//1需要写入GPR
+            desReg_addr = pc_ins[20:16];//写入rt
+            Ins_Valid = 1;//指令有效
+            op = `EXE_MFC0_OP;//从C0写
+            sel = `EXE_RES_MOVE;//操作类型            
+        end
     end
 end
 //给num1赋值
